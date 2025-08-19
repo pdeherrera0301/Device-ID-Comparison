@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Device ID Comparison Tool</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .upload-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 2px dashed #dee2e6;
+        }
+        .file-input {
+            margin: 10px 0;
+            padding: 10px;
+            width: 100%;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .summary {
+            background: #e8f4fd;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border-left: 4px solid #2196F3;
+            display: none;
+        }
+        .section {
+            margin-bottom: 30px;
+        }
+        .section h2 {
+            color: #2196F3;
+            border-bottom: 2px solid #2196F3;
+            padding-bottom: 5px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            font-size: 12px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .analyze-btn {
+            background: #2196F3;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 0;
+            width: 100%;
+        }
+        .analyze-btn:hover {
+            background: #1976D2;
+        }
+        .analyze-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .loading {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+        }
+        .success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .scroll-table {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+        }
+        .file-status {
+            display: inline-block;
+            margin-left: 10px;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        .file-loaded {
+            background: #d4edda;
+            color: #155724;
+        }
+        .file-missing {
+            background: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Device ID Comparison Tool</h1>
+        
+        <div class="upload-section">
+            <h3>📁 Upload Files for Comparison</h3>
+            <p>Please upload both Excel files to compare Device IDs:</p>
+            
+            <label for="servicePlanFile"><strong>Device List 1:</strong></label>
+            <input type="file" id="servicePlanFile" class="file-input" accept=".xlsx,.xls" />
+            <span id="servicePlanStatus" class="file-status file-missing">Not loaded</span>
+            
+            <label for="inventoryFile"><strong>Device List 2:</strong></label>
+            <input type="file" id="inventoryFile" class="file-input" accept=".xlsx,.xls" />
+            <span id="inventoryStatus" class="file-status file-missing">Not loaded</span>
+            
+            <button class="analyze-btn" id="analyzeBtn" onclick="analyzeFiles()" disabled>
+                Analyze Device IDs
+            </button>
+        </div>
+        
+        <div id="status" class="status" style="display: none;"></div>
+        
+        <div id="summary" class="summary">
+            <h3>📊 Comparison Summary</h3>
+            <div id="summaryContent">Upload both files and click "Analyze Device IDs" to see the comparison results.</div>
+        </div>
+
+        <!-- Export to Excel Button -->
+        <button class="analyze-btn" id="exportExcelBtn" style="margin-bottom: 20px;">
+            Export Results to Excel
+        </button>
+        
+        <div id="results">
+            <div class="section">
+                <h2>🔄 Devices Found in BOTH Lists</h2>
+                <div id="bothDevices">Results will appear here after analysis.</div>
+            </div>
+            
+            <div class="section">
+                <h2>📋 Devices ONLY in Device List 1</h2>
+                <div id="servicePlanOnly">Results will appear here after analysis.</div>
+            </div>
+            
+            <div class="section">
+                <h2>📦 Devices ONLY in Device List 2</h2>
+                <div id="inventoryOnly">Results will appear here after analysis.</div>
+            </div>
+        </div>
+    </div>
+    <script>
+        let servicePlanData = null;
+        let inventoryData = null;
+        
+        // File upload handlers
+        document.getElementById('servicePlanFile').addEventListener('change', function(e) {
+            loadFile(e.target.files[0], 'servicePlan');
+        });
+        
+        document.getElementById('inventoryFile').addEventListener('change', function(e) {
+            loadFile(e.target.files[0], 'inventory');
+        });
+        
+        function loadFile(file, type) {
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const workbook = XLSX.read(e.target.result, { type: 'binary' });
+                    
+                    if (type === 'servicePlan') {
+                        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                        servicePlanData = XLSX.utils.sheet_to_json(sheet);
+                        document.getElementById('servicePlanStatus').className = 'file-status file-loaded';
+                        document.getElementById('servicePlanStatus').textContent = `Loaded (${servicePlanData.length} records)`;
+                    } else {
+                        let sheet;
+                        if (workbook.SheetNames.includes('Full Inventory')) {
+                            sheet = workbook.Sheets['Full Inventory'];
+                        } else {
+                            sheet = workbook.Sheets[workbook.SheetNames[0]];
+                        }
+                        inventoryData = XLSX.utils.sheet_to_json(sheet);
+                        document.getElementById('inventoryStatus').className = 'file-status file-loaded';
+                        document.getElementById('inventoryStatus').textContent = `Loaded (${inventoryData.length} records)`;
+                    }
+                    
+                    if (servicePlanData && inventoryData) {
+                        document.getElementById('analyzeBtn').disabled = false;
+                    }
+                    
+                } catch (error) {
+                    alert(`Error loading ${type} file: ${error.message}`);
+                }
+            };
+            reader.readAsBinaryString(file);
+        }
+        
+        function analyzeFiles() {
+            if (!servicePlanData || !inventoryData) {
+                alert('Please upload both files first.');
+                return;
+            }
+            
+            const statusDiv = document.getElementById('status');
+            statusDiv.style.display = 'block';
+            statusDiv.className = 'status loading';
+            statusDiv.textContent = 'Analyzing device IDs...';
+            
+            try {
+                // Filter out any filter rows from both datasets
+                const filteredServicePlanData = servicePlanData.filter(device => {
+                    const deviceId = String(device['Device ID'] || '');
+                    return deviceId && !deviceId.toLowerCase().includes('filter') && !deviceId.toLowerCase().includes('applied');
+                });
+                
+                const filteredInventoryData = inventoryData.filter(device => {
+                    const deviceId = String(device['Device ID'] || '');
+                    return deviceId && !deviceId.toLowerCase().includes('filter') && !deviceId.toLowerCase().includes('applied');
+                });
+                
+                const servicePlanDeviceIds = new Set(filteredServicePlanData.map(d => String(d['Device ID'])));
+                const inventoryDeviceIds = new Set(filteredInventoryData.map(d => String(d['Device ID'])));
+                
+                const devicesInBoth = filteredServicePlanData.filter(device => 
+                    inventoryDeviceIds.has(String(device['Device ID']))
+                ).map(serviceDevice => {
+                    const inventoryDevice = filteredInventoryData.find(d => String(d['Device ID']) === String(serviceDevice['Device ID']));
+                    return {
+                        ...serviceDevice,
+                        'Inventory Status': inventoryDevice ? inventoryDevice.Status : 'N/A'
+                    };
+                });
+                
+                const devicesOnlyInServicePlan = filteredServicePlanData.filter(device => 
+                    !inventoryDeviceIds.has(String(device['Device ID']))
+                );
+                
+                const devicesOnlyInInventory = filteredInventoryData.filter(device => 
+                    !servicePlanDeviceIds.has(String(device['Device ID']))
+                );
+                
+                document.getElementById('summary').style.display = 'block';
+                document.getElementById('summaryContent').innerHTML = `
+                    <p><strong>📈 Total Device List 1 Devices:</strong> ${filteredServicePlanData.length}</p>
+                    <p><strong>📦 Total Device List 2 Devices:</strong> ${filteredInventoryData.length}</p>
+                    <p><strong>🔄 Devices in Both Lists:</strong> ${devicesInBoth.length}</p>
+                    <p><strong>📋 Devices Only in Device List 1:</strong> ${devicesOnlyInServicePlan.length}</p>
+                    <p><strong>📦 Devices Only in Device List 2:</strong> ${devicesOnlyInInventory.length}</p>
+                    <p><strong>🎯 Match Rate:</strong> ${((devicesInBoth.length / Math.max(filteredServicePlanData.length, filteredInventoryData.length)) * 100).toFixed(1)}%</p>
+                `;
+                
+                displayDevices('bothDevices', devicesInBoth, 'Devices Found in Both Lists');
+                displayDevices('servicePlanOnly', devicesOnlyInServicePlan, 'Devices Only in Service Plan Logs');
+                displayDevices('inventoryOnly', devicesOnlyInInventory, 'Devices Only in Blackline Inventory');
+                
+                statusDiv.className = 'status success';
+                statusDiv.textContent = `✅ Analysis complete! Found ${devicesInBoth.length} matching devices, ${devicesOnlyInServicePlan.length} unique to Device List 1, and ${devicesOnlyInInventory.length} unique to Device List 2.`;
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = `❌ Error: ${error.message}`;
+                console.error('Analysis error:', error);
+            }
+        }
+        
+        function displayDevices(containerId, devices, title) {
+            const container = document.getElementById(containerId);
+            
+            if (devices.length === 0) {
+                container.innerHTML = `<p>No devices found in this category.</p>`;
+                return;
+            }
+            
+            // Filter out any rows that might contain filter information
+            const filteredDevices = devices.filter(device => {
+                // Skip rows that appear to be filter rows
+                const deviceId = String(device['Device ID'] || '');
+                if (!deviceId || deviceId.toLowerCase().includes('filter') || deviceId.toLowerCase().includes('applied')) {
+                    return false;
+                }
+                return true;
+            });
+            
+            if (filteredDevices.length === 0) {
+                container.innerHTML = `<p>No valid devices found in this category after filtering.</p>`;
+                return;
+            }
+            
+            const allColumns = new Set();
+            filteredDevices.forEach(device => {
+                Object.keys(device).forEach(key => allColumns.add(key));
+            });
+            const columns = Array.from(allColumns);
+            
+            const table = document.createElement('table');
+            const headerRow = document.createElement('tr');
+            
+            columns.forEach(col => {
+                const th = document.createElement('th');
+                th.textContent = col;
+                headerRow.appendChild(th);
+            });
+            table.appendChild(headerRow);
+            
+            filteredDevices.forEach(device => {
+                const row = document.createElement('tr');
+                columns.forEach(col => {
+                    const td = document.createElement('td');
+                    let value = device[col];
+                    if (typeof value === 'number' && value > 40000 && value < 50000) {
+                        const date = new Date((value - 25569) * 86400 * 1000);
+                        value = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+                    }
+                    td.textContent = value || 'N/A';
+                    row.appendChild(td);
+                });
+                table.appendChild(row);
+            });
+            
+            const scrollDiv = document.createElement('div');
+            scrollDiv.className = 'scroll-table';
+            scrollDiv.appendChild(table);
+            
+            container.innerHTML = `<p><strong>${filteredDevices.length}</strong> devices found:</p>`;
+            container.appendChild(scrollDiv);
+        }
+
+        // --- Export to Excel ---
+        document.getElementById('exportExcelBtn').addEventListener('click', function() {
+            function getTableFromContainer(containerId) {
+                const container = document.getElementById(containerId);
+                return container.querySelector('table');
+            }
+
+            const bothTable = getTableFromContainer('bothDevices');
+            const servicePlanOnlyTable = getTableFromContainer('servicePlanOnly');
+            const inventoryOnlyTable = getTableFromContainer('inventoryOnly');
+
+            const wb = XLSX.utils.book_new();
+
+            // ✅ Summary sheet removed
+
+            if (bothTable) {
+                const ws1 = XLSX.utils.table_to_sheet(bothTable);
+                XLSX.utils.book_append_sheet(wb, ws1, "Both");
+            }
+            if (servicePlanOnlyTable) {
+                const ws2 = XLSX.utils.table_to_sheet(servicePlanOnlyTable);
+                XLSX.utils.book_append_sheet(wb, ws2, "List 1 Only");
+            }
+            if (inventoryOnlyTable) {
+                const ws3 = XLSX.utils.table_to_sheet(inventoryOnlyTable);
+                XLSX.utils.book_append_sheet(wb, ws3, "List 2 Only");
+            }
+
+            const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+            XLSX.writeFile(wb, `Device_ID_Comparison_${timestamp}.xlsx`);
+        });
+    </script>
+</body>
+</html>
